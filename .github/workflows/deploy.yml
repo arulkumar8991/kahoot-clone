@@ -18,20 +18,10 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Login to ACR
-      run: |
-        echo ${{ secrets.ACR_PASSWORD }} | docker login \
-          ${{ secrets.ACR_LOGIN_SERVER }} \
-          -u ${{ secrets.ACR_USERNAME }} --password-stdin
-
-    - name: Build and Push Docker Image
-      run: |
-        docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/kahoot-app:${{ github.sha }} .
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/kahoot-app:${{ github.sha }}
-
-    - name: Deploy to Azure Container App
-      run: |
-        az containerapp update \
-          --name ${{ secrets.CONTAINER_APP_NAME }} \
-          --resource-group ${{ secrets.RESOURCE_GROUP }} \
-          --image ${{ secrets.ACR_LOGIN_SERVER }}/kahoot-app:${{ github.sha }}
+    - name: Build and Push Image to ACR
+      uses: azure/container-apps-deploy-action@v2
+      with:
+        acrName: kahootregistry
+        containerAppName: ${{ secrets.CONTAINER_APP_NAME }}
+        resourceGroup: ${{ secrets.RESOURCE_GROUP }}
+        imageToBuild: kahootregistry.azurecr.io/kahoot-app:${{ github.sha }}
