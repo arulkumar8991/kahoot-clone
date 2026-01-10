@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game</title>
+
+<style>
+* {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg,#eef2f7,#d9e4f5);
+  margin: 0;
+  padding: 14px;
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+}
+
+.timer {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ff3b3b;
+  margin-bottom: 12px;
+}
+
+#question {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 14px;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.option {
+  padding: 18px;
+  border-radius: 18px;
+  font-size: 18px;
+  border: none;
+  cursor: pointer;
+  height: 110px;
+  transition: transform .1s, opacity .2s;
+}
+
+.option:active { transform: scale(0.97); }
+
+.red    { background:#ff5252; color:#fff; }
+.blue   { background:#448aff; color:#fff; }
+.green  { background:#4caf50; color:#fff; }
+.yellow { background:#ffca28; color:#333; }
+
+.leaderboard {
+  display: none;
+  margin-top: 10px;
+}
+
+.leaderboard div {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 16px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <div class="timer" id="timer"></div>
+  <div id="question">Waiting for host…</div>
+  <div class="options" id="options"></div>
+  <div class="leaderboard" id="leaderboard"></div>
+</div>
+
+<script>
+/* ---------- SESSION ---------- */
+const pin  = sessionStorage.getItem("pin");
+const name = sessionStorage.getItem("name");
+
+if (!pin || !name) {
+  alert("Invalid session. Please join again.");
+  location.href = "/";
+}
+
+/* ---------- PLAYER ID ---------- */
+let playerId = sessionStorage.getItem("player_id");
+if (!playerId) {
+  playerId = crypto.randomUUID();
+  sessionStorage.setItem("player_id", playerId);
+}
+
+const protocol = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(
+  `${protocol}://${location.host}/ws/${pin}/${playerId}/${encodeURIComponent(name)}`
+);
+
+let timerInterval = null;
+let answered = false;
+
+/* ---------- SOCKET ---------- */
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+
+  /* ---- WAIT ---- */
+  if (d.type === "wait") {
+    clearInterval(timerInterval);
+    timer.innerText = "";
+    question.innerText = "⏳ Waiting for next question…";
+    options.innerHTML = "";
+    leaderboard.style.display = "none";
+    return;
+  }
+
+  /* ---- GAME FINISHED ---- */
+  if (d.type === "leaderboard" && d.finished) {
+    clearInterval(timerInterval);
+    timer.innerText = "";
+    question.innerText = "🏁 Game Finished! 🎉";
+    options.innerHTML = "";
+
+    leaderboard.style.display = "block";
+    leaderboard.innerHTML = "";
+
+    d.data.forEach((p,i)=>{
+      leaderboard.innerHTML += `
+        <div>${i+1}. ${p.name} — ${p.score} pts</div>
+      `;
+    });
+    return;
+  }
+
+  /* ---- QUESTION ---- */
+  const COLORS = ["red","blue","green","yellow"];
+
+  if (d.type === "question") {
+    answered = false;
+    options.innerHTML = "";
+    question.innerText = d.q;
+    startTimer(d.time);
+
+    /* build color objects */
+    const optionObjects = COLORS.map(color => ({ color }));
+
+    /* visual shuffle only */
+    shuffle(optionObjects);
+
+    optionObjects.forEach(opt => {
+      const btn = document.createElement("button");
+      btn.className = `option ${opt.color}`;
+      btn.innerText = "";   // no text, color only
+
+      btn.onclick = () => {
+        if (answered) return;
+        answered = true;
+
+        console.log("SENDING COLOR:", opt.color);
+
+        ws.send(JSON.stringify({
+          type: "answer",
+          option: opt.color   // ✅ SEND COLOR
+        }));
+
+        disableButtons();
+      };
+
+      options.appendChild(btn);
+    });
+  }
+};
+
+/* ---------- HELPERS ---------- */
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+function disableButtons() {
+  document.querySelectorAll(".option").forEach(b=>{
+    b.disabled = true;
+    b.style.opacity = "0.6";
+  });
+}
+
+function startTimer(t) {
+  timer.innerText = `⏱ ${t}s`;
+  timerInterval = setInterval(()=>{
+    t--;
+    timer.innerText = `⏱ ${t}s`;
+    if (t <= 0) clearInterval(timerInterval);
+  },1000);
+}
+
+ws.onclose = () => {
+  alert("Game ended or PIN expired");
+  sessionStorage.clear();
+  location.href = "/";
+};
+</script>
+
+</body>
+</html>

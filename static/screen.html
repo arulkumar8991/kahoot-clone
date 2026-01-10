@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Game Screen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+/* --- SAME CSS AS YOUR VERSION (UNCHANGED) --- */
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: radial-gradient(circle at top,#1e3c4a,#0f2027);
+  color: white;
+  padding: 32px;
+  text-align: center;
+}
+
+.view { display:none; }
+.view.active { display:block; }
+
+#question {
+  font-size: 42px;
+  font-weight: 800;
+  margin-bottom: 36px;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  max-width: 1000px;
+  margin: auto;
+}
+
+.option {
+  padding: 36px;
+  border-radius: 24px;
+  font-size: 28px;
+  font-weight: 800;
+  color: white;
+  min-height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+}
+
+.opt-0 { background:#3b82f6; }
+.opt-1 { background:#eab308; color:#1f2937; }
+.opt-2 { background:#ef4444; }
+.opt-3 { background:#22c55e; }
+
+.chart {
+  max-width: 900px;
+  margin: 60px auto;
+}
+
+.result-row {
+  display: flex;
+  align-items: center;
+  margin: 18px 0;
+}
+
+.result-text {
+  width: 280px;
+  text-align: left;
+  font-size: 22px;
+}
+
+.result-bar {
+  flex: 1;
+  height: 34px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 20px;
+  overflow: hidden;
+  margin: 0 16px;
+}
+
+.result-fill {
+  height: 100%;
+  width: 0%;
+  transition: width .6s ease;
+  background: linear-gradient(90deg,#6366f1,#818cf8);
+}
+
+.result-count {
+  width: 60px;
+  text-align: right;
+  font-weight: bold;
+}
+
+.result-row.correct .result-fill {
+  background: linear-gradient(90deg,#16a34a,#22c55e);
+}
+
+.result-row.wrong { opacity:.4; }
+
+#leaderboard {
+  max-width: 520px;
+  margin: 50px auto;
+}
+
+.lb-item {
+  display:flex;
+  justify-content:space-between;
+  padding:16px 20px;
+  margin-bottom:14px;
+  border-radius:14px;
+  background:rgba(255,255,255,0.12);
+  font-size:22px;
+}
+
+.podium {
+  display:flex;
+  justify-content:center;
+  align-items:flex-end;
+  gap:28px;
+}
+
+.pillar {
+  width:160px;
+  border-radius:20px 20px 0 0;
+  padding:18px;
+  font-size:20px;
+  font-weight:bold;
+}
+
+.first { height:240px; background:gold; color:#333 }
+.second { height:190px; background:silver; color:#333 }
+.third { height:160px; background:#cd7f32 }
+</style>
+</head>
+
+<body>
+
+<div id="view-question" class="view active">
+  <div id="question">Waiting for host…</div>
+  <div class="options" id="options"></div>
+</div>
+
+<div id="view-chart" class="view">
+  <h2>📊 Answers</h2>
+  <div class="chart" id="chart"></div>
+</div>
+
+<div id="view-leaderboard" class="view">
+  <h2>🏆 Leaderboard</h2>
+  <div id="leaderboard"></div>
+</div>
+
+<div id="view-podium" class="view">
+  <h1>🎉 Winners</h1>
+  <div class="podium">
+    <div class="pillar second" id="p2"></div>
+    <div class="pillar first" id="p1"></div>
+    <div class="pillar third" id="p3"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<script>
+const pin = new URLSearchParams(location.search).get("pin");
+const ws = new WebSocket(
+  `${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws/${pin}/SCREEN/Screen`
+);
+
+let rows = {};
+let correctId = null;
+
+function showView(id) {
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+  console.log("SCREEN EVENT:", d);
+
+  if (d.type === "question") {
+    showView("view-question");
+    question.innerText = d.q;
+    options.innerHTML = "";
+
+    d.options.forEach((opt, i) => {
+      const div = document.createElement("div");
+      div.className = `option opt-${i}`;
+      div.dataset.id = opt.id;   // ✅ IMPORTANT
+      div.innerText = opt.text;
+      options.appendChild(div);
+    });
+
+
+    buildChart(d.options);
+  }
+
+  if (d.type === "stats") {
+    const max = Math.max(...Object.values(d.counts), 1);
+    Object.entries(d.counts).forEach(([id, count]) => {
+      const row = rows[id];
+      if (!row) return;
+      row.querySelector(".result-count").innerText = count;
+      row.querySelector(".result-fill").style.width =
+        `${(count / max) * 100}%`;
+    });
+  }
+
+  if (d.type === "lock") {
+    highlightCorrect(d.correct_id);
+  }
+
+  if (d.type === "show_chart") {
+    showView("view-chart");
+  }
+
+  if (d.type === "leaderboard") {
+    showView("view-leaderboard");
+    renderLeaderboard(d.data);
+  }
+};
+
+function buildChart(options) {
+  chart.innerHTML = "";
+  rows = {};
+
+  options.forEach(opt => {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    row.innerHTML = `
+      <div class="result-text">${opt.text}</div>
+      <div class="result-bar"><div class="result-fill"></div></div>
+      <div class="result-count">0</div>
+    `;
+    chart.appendChild(row);
+    rows[opt.id] = row;
+  });
+}
+
+
+function highlightCorrect(correctId) {
+  Object.entries(rows).forEach(([id, row]) => {
+    row.classList.remove("correct", "wrong");
+    row.classList.add(id === correctId ? "correct" : "wrong");
+  });
+}
+
+function renderLeaderboard(data) {
+  leaderboard.innerHTML = "";
+
+  data.forEach((p, i) => {
+    leaderboard.innerHTML += `
+      <div class="lb-item">
+        <span>${i + 1}. ${p.name}</span>
+        <span>${p.score}</span>
+      </div>
+    `;
+  });
+}
+
+
+
+
+function showPodium(data) {
+  showView("view-podium");
+  if (data[0]) p1.innerText = "🥇 " + data[0].name;
+  if (data[1]) p2.innerText = "🥈 " + data[1].name;
+  if (data[2]) p3.innerText = "🥉 " + data[2].name;
+  confetti({ particleCount:220, spread:100, origin:{y:.6} });
+}
+</script>
+
+</body>
+</html>

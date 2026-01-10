@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join Game</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg,#667eea,#764ba2);
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+}
+
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 14px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+button {
+  margin-top: 18px;
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: white;
+}
+</style>
+</head>
+
+<body>
+<div class="card">
+  <h2>🎮 Join the Game</h2>
+  <input id="name" placeholder="Your Name">
+  <input id="pin" placeholder="Game PIN">
+  <button onclick="join()">Join</button>
+</div>
+
+<script>
+function join() {
+  const nameInput = document.getElementById("name");
+  const pinInput = document.getElementById("pin");
+
+  const n = nameInput.value.trim();
+  const p = pinInput.value.trim().toUpperCase();
+
+  if (!n || !p) {
+    alert("Enter name and PIN");
+    return;
+  }
+
+  fetch(`/check-pin/${p}`)
+    .then(r => r.json())
+    .then(res => {
+      if (!res.valid) {
+        alert("❌ Invalid Game PIN");
+        return;
+      }
+
+      sessionStorage.setItem("pin", p);
+      sessionStorage.setItem("name", n);
+
+      if (res.started) {
+        alert("👀 Game already started. You will join as spectator.");
+      }
+
+      location.href = "/static/game.html";
+    })
+    .catch(() => {
+      alert("⚠ Unable to connect to server");
+    });
+}
+</script>
+
+
+</body>
+</html>

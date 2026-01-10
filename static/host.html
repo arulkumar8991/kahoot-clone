@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Host Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: radial-gradient(circle at top, #0f2027, #203a43, #2c5364);
+  color: white;
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+  max-width: 900px;
+  margin: auto;
+}
+
+.card {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+.pin {
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.screen-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: #00e5ff;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+button {
+  margin-top: 14px;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: bold;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  background: linear-gradient(135deg,#00e676,#00c853);
+}
+
+button.secondary {
+  background: linear-gradient(135deg,#00bcd4,#0097a7);
+}
+
+button.warn {
+  background: linear-gradient(135deg,#ff9800,#f57c00);
+}
+
+button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.players {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.player {
+  background: #00e5c4;
+  color: #003333;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+  gap: 12px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="layout">
+
+  <!-- HOST PANEL -->
+  <div class="card">
+    <h2>🎤 Host Panel</h2>
+
+    <div class="pin">Game PIN: <span id="pin">----</span></div>
+    <div id="status">Waiting for players…</div>
+
+    <a id="screenLink" class="screen-link" target="_blank"></a>
+
+    <div class="controls">
+      <button id="startBtn" disabled>Start Game</button>
+      <button id="chartBtn" class="secondary" disabled>Show Chart</button>
+      <button id="leaderBtn" class="warn" disabled>Show Leaderboard</button>
+      <button id="nextBtn" disabled>Next Question</button>
+    </div>
+  </div>
+
+  <!-- PLAYERS -->
+  <div class="card">
+    <h3>👥 Players (<span id="pCount">0</span>)</h3>
+    <div id="players" class="players"></div>
+  </div>
+
+</div>
+
+<script>
+const pinEl = document.getElementById("pin");
+const statusEl = document.getElementById("status");
+const playersEl = document.getElementById("players");
+const pCountEl = document.getElementById("pCount");
+const screenLinkEl = document.getElementById("screenLink");
+
+const startBtn = document.getElementById("startBtn");
+const chartBtn = document.getElementById("chartBtn");
+const leaderBtn = document.getElementById("leaderBtn");
+const nextBtn = document.getElementById("nextBtn");
+
+let pin = "";
+let qNo = 0;
+let ws;
+
+/* CREATE GAME */
+fetch("/create-game", { method: "POST" })
+  .then(r => r.json())
+  .then(d => {
+    pin = d.pin;
+    pinEl.innerText = pin;
+
+    screenLinkEl.innerText = "🖥 Open Screen View";
+    screenLinkEl.href = `${location.origin}/static/screen.html?pin=${pin}`;
+
+    connectWS();
+  });
+
+/* WEBSOCKET */
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/${pin}/HOST/Host`);
+
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+
+    if (d.type === "players") {
+      playersEl.innerHTML = "";
+      pCountEl.innerText = d.data.length;
+
+      d.data.forEach(p => {
+        playersEl.innerHTML += `<div class="player">${p.name}</div>`;
+      });
+
+      startBtn.disabled = d.data.length === 0;
+    }
+
+    if (d.type === "question_end") {
+      statusEl.innerText = "⏱ Time up";
+      chartBtn.disabled = false;
+    }
+  };
+}
+
+/* START / NEXT QUESTION */
+startBtn.onclick = sendQuestion;
+nextBtn.onclick = sendQuestion;
+
+function sendQuestion() {
+  fetch(`/next/${pin}`, { method: "POST" })
+    .then(r => r.json())
+    .then(res => {
+      if (res.status === "finished") {
+        statusEl.innerText = "🎉 Game Finished";
+        startBtn.disabled = true;
+        nextBtn.disabled = true;
+        chartBtn.disabled = true;
+        leaderBtn.disabled = true;
+        return;
+      }
+
+      qNo++;
+      statusEl.innerText = `❓ Question ${qNo} live`;
+
+      startBtn.style.display = "none";
+      chartBtn.disabled = true;
+      leaderBtn.disabled = true;
+      nextBtn.disabled = true;
+    });
+}
+
+/* SHOW CHART */
+chartBtn.onclick = () => {
+  fetch(`/show-chart/${pin}`, { method: "POST" });
+  statusEl.innerText = "📊 Showing chart";
+  chartBtn.disabled = true;
+  leaderBtn.disabled = false;
+};
+
+/* SHOW LEADERBOARD */
+leaderBtn.onclick = () => {
+  fetch(`/show-leaderboard/${pin}`, { method: "POST" });
+  statusEl.innerText = "🏆 Showing leaderboard";
+  leaderBtn.disabled = true;
+  nextBtn.disabled = false;
+};
+</script>
+
+</body>
+</html>
