@@ -9,6 +9,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ---------------- QUESTIONS ----------------
 QUESTIONS = [
     {
+         "type": "text",  
         "q": "What is FastAPI?",
         "options": [
             {"id": "A", "text": "Framework"},
@@ -19,6 +20,7 @@ QUESTIONS = [
         "answer": "A"
     },
     {
+         "type": "text",  
         "q": "WebSocket is for?",
         "options": [
             {"id": "A", "text": "Mail"},
@@ -27,7 +29,43 @@ QUESTIONS = [
             {"id": "D", "text": "Auth"},
         ],
         "answer": "B"
-    }
+    },
+    {
+        "type": "image",
+        "media": "/static/media/PMG_Logo_2022.png",
+        "q": "Which logo is this?",
+        "options": [
+            {"id": "A", "text": "HP"},
+            {"id": "B", "text": "Dell"},
+            {"id": "C", "text": "PMG"},
+            {"id": "D", "text": "Google"},
+        ],
+        "answer": "C"
+    },
+    {
+        "type": "video",
+        "media": "/static/media/demo.mp4",
+        "q": "What feature is shown?",
+        "options": [
+            {"id": "A", "text": "Feature1"},
+            {"id": "B", "text": "Feature2"},
+            {"id": "C", "text": "Feature3"},
+            {"id": "D", "text": "Feature4"},
+        ],
+        "answer": "D"
+    },
+    {
+        "type": "audio",
+        "media": "/static/media/sound.mp3",
+        "q": "Idenify the sound?",
+        "options": [
+            {"id": "A", "text": "Sound1"},
+            {"id": "B", "text": "Sound2"},
+            {"id": "C", "text": "Sound3"},
+            {"id": "D", "text": "Sound4"},
+        ],
+        "answer": "A"
+    },
 ]
 
 QUESTION_TIME = 15
@@ -46,7 +84,8 @@ async def create_game():
         "question_start": None,
         "players": {},
         "answered": set(),
-        "answers_count": {}
+        "answers_count": {},
+        "timer_task": None
     }
     return {"pin": pin}
 
@@ -84,16 +123,37 @@ async def next_question(pin: str):
             await p["ws"].send_json({
                 "type": "question",
                 "q": q["q"],
+                "q_type": q.get("type", "text"),
+                "media": q.get("media"),
                 "options": q["options"],
                 "time": QUESTION_TIME
             })
-
-    asyncio.create_task(lock_question(pin, game["question_index"]))
+    # START TIMER
+    game["timer_task"] = asyncio.create_task(run_timer(pin, game["question_index"]))
     return {"status": "sent"}
+
+
+# ---------------- TIMER LOOP ----------------
+async def run_timer(pin: str, q_index: int):
+    for remaining in range(QUESTION_TIME, -1, -1):
+        await asyncio.sleep(1)
+
+        game = games.get(pin)
+        if not game or game["question_index"] != q_index:
+            return
+
+        for p in game["players"].values():
+            if p["role"] in ("HOST", "SCREEN") and p["ws"]:
+                await p["ws"].send_json({
+                    "type": "timer",
+                    "remaining": remaining
+                })
+
+    await lock_question(pin, q_index)
 
 # ---------------- LOCK QUESTION ----------------
 async def lock_question(pin: str, q_index: int):
-    await asyncio.sleep(QUESTION_TIME)
+    # await asyncio.sleep(QUESTION_TIME)
 
     game = games.get(pin)
     if not game or game["question_index"] != q_index:
@@ -178,21 +238,19 @@ async def player_ws(ws: WebSocket, pin: str, player_id: str, name: str):
             correct_id = QUESTIONS[game["question_index"]]["answer"]
             correct_color = OPTION_COLOR_MAP[correct_id]
 
-            print(
-                "ANSWER DEBUG →",
-                "Player:", game["players"][player_id]["name"],
-                "| Selected:", selected_color,
-                "| Correct ID:", correct_id,
-                "| Correct Color:", correct_color
-            )
+            # print(
+            #     "ANSWER DEBUG →",
+            #     "Player:", game["players"][player_id]["name"],
+            #     "| Selected:", selected_color,
+            #     "| Correct ID:", correct_id,
+            #     "| Correct Color:", correct_color
+            # )
 
             if selected_color == correct_color:
                 elapsed = asyncio.get_event_loop().time() - game["question_start"]
                 remaining = max(0, QUESTION_TIME - elapsed)
                 score = int(BASE_SCORE * (remaining / QUESTION_TIME))
                 game["players"][player_id]["score"] += score
-
-
 
             await send_answer_stats(pin)
 

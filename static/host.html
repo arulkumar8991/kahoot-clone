@@ -85,6 +85,14 @@ button:disabled {
   grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
   gap: 12px;
 }
+
+#timerBox {
+  background: rgba(0,0,0,0.25);
+  padding: 10px 14px;
+  border-radius: 12px;
+  width: fit-content;
+}
+
 </style>
 </head>
 
@@ -98,6 +106,11 @@ button:disabled {
 
     <div class="pin">Game PIN: <span id="pin">----</span></div>
     <div id="status">Waiting for players…</div>
+    <div id="timerBox" style="margin-top:14px; display:none;">
+    ⏳ Time Left:
+    <span id="timer" style="font-size:22px;font-weight:800;">0</span>s
+  </div>
+
 
     <a id="screenLink" class="screen-link" target="_blank"></a>
 
@@ -128,6 +141,10 @@ const startBtn = document.getElementById("startBtn");
 const chartBtn = document.getElementById("chartBtn");
 const leaderBtn = document.getElementById("leaderBtn");
 const nextBtn = document.getElementById("nextBtn");
+
+const timerEl = document.getElementById("timer");
+const timerBox = document.getElementById("timerBox");
+
 
 let pin = "";
 let qNo = 0;
@@ -165,9 +182,26 @@ function connectWS() {
       startBtn.disabled = d.data.length === 0;
     }
 
+    if (d.type === "timer") {
+      timerBox.style.display = "block";
+      timerEl.innerText = d.remaining;
+
+      if (d.remaining <= 5) {
+        timerEl.style.color = "#ff5252";
+      } 
+
+      if (d.remaining === 0) {
+        statusEl.innerText = "⏱ Time up";
+        chartBtn.disabled = false;
+        timerBox.style.display = "none";
+      }
+    }
+
+
     if (d.type === "question_end") {
       statusEl.innerText = "⏱ Time up";
-      chartBtn.disabled = false;
+      // chartBtn.disabled = false;
+      // timerBox.style.display = "none";
     }
   };
 }
@@ -186,6 +220,7 @@ function sendQuestion() {
         nextBtn.disabled = true;
         chartBtn.disabled = true;
         leaderBtn.disabled = true;
+        
         return;
       }
 
@@ -196,6 +231,11 @@ function sendQuestion() {
       chartBtn.disabled = true;
       leaderBtn.disabled = true;
       nextBtn.disabled = true;
+
+      timerBox.style.display = "block";
+      timerEl.innerText = "—";
+      timerEl.style.color = "#ffffff";
+
     });
 }
 

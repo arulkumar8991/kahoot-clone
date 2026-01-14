@@ -52,49 +52,91 @@ body {
 .opt-3 { background:#22c55e; }
 
 .chart {
-  max-width: 900px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 26px;
+  height: 360px;
   margin: 60px auto;
 }
 
-.result-row {
-  display: flex;
-  align-items: center;
-  margin: 18px 0;
-}
-
-.result-text {
-  width: 280px;
-  text-align: left;
-  font-size: 22px;
+.result-col {
+  width: 160px;
+  text-align: center;
 }
 
 .result-bar {
-  flex: 1;
-  height: 34px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 20px;
+  height: 260px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 18px;
   overflow: hidden;
-  margin: 0 16px;
+  display: flex;
+  align-items: flex-end;
+  box-shadow: inset 0 0 10px rgba(0,0,0,.4);
 }
 
-.result-fill {
-  height: 100%;
-  width: 0%;
-  transition: width .6s ease;
-  background: linear-gradient(90deg,#6366f1,#818cf8);
+.result-col.correct {
+  transform: scale(1.08);
+}
+
+.result-col.correct .result-fill {
+  background: linear-gradient(180deg,#16a34a,#22c55e);
+  box-shadow: 0 0 30px rgba(34,197,94,.7);
+}
+
+.result-col.wrong {
+  opacity: 0.15;   /* ⬅️ stronger dim */
+  filter: grayscale(100%);
+}
+
+.result-col.correct .result-text {
+  color: #22c55e;
+  font-weight: 900;
+}
+
+.result-col.wrong .result-text {
+  color: #9ca3af;
+}
+
+
+.result-text {
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .result-count {
-  width: 60px;
-  text-align: right;
-  font-weight: bold;
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 800;
 }
 
-.result-row.correct .result-fill {
-  background: linear-gradient(90deg,#16a34a,#22c55e);
+/* FINAL ANSWER STATE */
+.result-col.correct .result-bar {
+  background: linear-gradient(180deg,#16a34a,#22c55e);
+  box-shadow: 0 0 28px rgba(34,197,94,.8);
 }
 
-.result-row.wrong { opacity:.4; }
+.result-col.wrong .result-bar {
+  background: linear-gradient(180deg,#dc2626,#ef4444);
+  box-shadow: 0 0 18px rgba(239,68,68,.6);
+}
+
+.result-col.correct .result-text {
+  color: #22c55e;
+  font-weight: 900;
+}
+
+.result-col.wrong .result-text {
+  color: #fca5a5;
+}
+
+.result-col.wrong {
+  opacity: 0.85;
+  filter: grayscale(30%);
+}
+
+
 
 #leaderboard {
   max-width: 520px;
@@ -129,11 +171,32 @@ body {
 .first { height:240px; background:gold; color:#333 }
 .second { height:190px; background:silver; color:#333 }
 .third { height:160px; background:#cd7f32 }
+
+#media {
+  margin-bottom: 30px;
+}
+
+#media img {
+  max-width: 90%;
+  max-height: 420px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+
+#media video {
+  max-width: 90%;
+  border-radius: 18px;
+}
+
+#media audio {
+  width: 60%;
+}
+
 </style>
 </head>
 
 <body>
-
+<div id="media"></div>
 <div id="view-question" class="view active">
   <div id="question">Waiting for host…</div>
   <div class="options" id="options"></div>
@@ -180,6 +243,28 @@ ws.onmessage = e => {
 
   if (d.type === "question") {
     showView("view-question");
+
+    media.innerHTML = "";
+
+    if (d.q_type === "image") {
+      media.innerHTML = `<img src="${d.media}" />`;
+    }
+
+    if (d.q_type === "video") {
+      media.innerHTML = `
+        <video autoplay muted controls>
+          <source src="${d.media}" type="video/mp4">
+        </video>`;
+    }
+
+    if (d.q_type === "audio") {
+      media.innerHTML = `
+        <audio autoplay controls>
+          <source src="${d.media}" type="audio/mpeg">
+        </audio>`;
+    }
+
+
     question.innerText = d.q;
     options.innerHTML = "";
 
@@ -196,25 +281,30 @@ ws.onmessage = e => {
   }
 
   if (d.type === "stats") {
-    const max = Math.max(...Object.values(d.counts), 1);
-    Object.entries(d.counts).forEach(([id, count]) => {
-      const row = rows[id];
-      if (!row) return;
-      row.querySelector(".result-count").innerText = count;
-      row.querySelector(".result-fill").style.width =
-        `${(count / max) * 100}%`;
-    });
-  }
+  const max = Math.max(...Object.values(d.counts), 1);
+
+  Object.entries(d.counts).forEach(([id, count]) => {
+    const col = rows[id];
+    if (!col) return;
+
+    col.querySelector(".result-count").innerText = count;
+    col.querySelector(".result-fill").style.height =
+      `${(count / max) * 100}%`;
+  });
+}
+
 
   if (d.type === "lock") {
     highlightCorrect(d.correct_id);
   }
 
   if (d.type === "show_chart") {
+    media.innerHTML = "";
     showView("view-chart");
   }
 
   if (d.type === "leaderboard") {
+    media.innerHTML = "";
     showView("view-leaderboard");
     renderLeaderboard(d.data);
   }
@@ -225,25 +315,43 @@ function buildChart(options) {
   rows = {};
 
   options.forEach(opt => {
-    const row = document.createElement("div");
-    row.className = "result-row";
-    row.innerHTML = `
-      <div class="result-text">${opt.text}</div>
-      <div class="result-bar"><div class="result-fill"></div></div>
+    const col = document.createElement("div");
+    col.className = "result-col";
+    col.dataset.id = String(opt.id); // ✅ normalize
+
+    col.innerHTML = `
+      <div class="result-bar">
+        <div class="result-fill"></div>
+      </div>
+      <div class="result-text">
+        <span class="label">${opt.text}</span>
+        <span class="icon" style="display:none">✔</span>
+      </div>
       <div class="result-count">0</div>
     `;
-    chart.appendChild(row);
-    rows[opt.id] = row;
+
+
+    chart.appendChild(col);
+    rows[String(opt.id)] = col; // ✅ string key
   });
 }
 
 
 function highlightCorrect(correctId) {
+  const cid = String(correctId);
+
   Object.entries(rows).forEach(([id, row]) => {
     row.classList.remove("correct", "wrong");
-    row.classList.add(id === correctId ? "correct" : "wrong");
+
+    if (id === cid) {
+      row.classList.add("correct");
+      row.querySelector(".icon").style.display = "inline";
+    } else {
+      row.classList.add("wrong");
+    }
   });
 }
+
 
 function renderLeaderboard(data) {
   leaderboard.innerHTML = "";
